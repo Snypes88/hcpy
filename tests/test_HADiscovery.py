@@ -210,6 +210,81 @@ class TestHADiscovery:
         assert setpoint_payload["max"] == 250.0
         assert setpoint_payload["step"] == 5.0
 
+    def test_current_cavity_temperature_sensor_is_celsius(
+        self, mock_mqtt_client, sample_discovery_config, device_state
+    ):
+        """CurrentCavityTemperature (07/81 read) must publish as a °C temperature
+        sensor -- not the unitless number it used to be (Gaggenau BSP250101/BOP251102)."""
+        device = {
+            "name": "test_oven",
+            "features": {
+                "4096": {
+                    "name": "Cooking.Oven.Status.CurrentCavityTemperature",
+                    "access": "read",
+                    "available": "true",
+                    "refCID": "07",
+                    "refDID": "81",
+                },
+            },
+        }
+        mqtt_topic = "test/device/oven"
+
+        with patch("builtins.open", mock_open(read_data=json.dumps(sample_discovery_config))):
+            publish_ha_discovery(
+                "test_config.yaml", device, device_state, mock_mqtt_client, mqtt_topic, False
+            )
+
+        payload = None
+        for call in mock_mqtt_client.publish.call_args_list:
+            topic = call[0][0]
+            if "sensor" in topic and "currentcavitytemperature" in topic:
+                payload = json.loads(call[0][1])
+        assert payload is not None, "CurrentCavityTemperature sensor topic not published"
+        assert payload["device_class"] == "temperature"
+        assert payload["unit_of_measurement"] == "°C"
+        assert payload["icon"] == "mdi:thermometer"
+
+    def test_fahrenheit_temperature_sensors_carry_f(
+        self, mock_mqtt_client, sample_discovery_config, device_state
+    ):
+        """°F variants (08/81, 08/A1) must publish as temperature sensors with °F."""
+        device = {
+            "name": "test_oven",
+            "features": {
+                "4103": {
+                    "name": "Cooking.Oven.Status.CurrentCavityTemperatureFahrenheit",
+                    "access": "read",
+                    "available": "true",
+                    "refCID": "08",
+                    "refDID": "81",
+                },
+                "5130": {
+                    "name": "Cooking.Oven.Option.SetpointTemperatureFahrenheit",
+                    "access": "readWrite",
+                    "available": "true",
+                    "refCID": "08",
+                    "refDID": "A1",
+                },
+            },
+        }
+        mqtt_topic = "test/device/oven"
+
+        with patch("builtins.open", mock_open(read_data=json.dumps(sample_discovery_config))):
+            publish_ha_discovery(
+                "test_config.yaml", device, device_state, mock_mqtt_client, mqtt_topic, False
+            )
+
+        found = {}
+        for call in mock_mqtt_client.publish.call_args_list:
+            topic = call[0][0]
+            if "sensor" in topic and "fahrenheit" in topic:
+                found[topic] = json.loads(call[0][1])
+        assert len(found) == 2, "expected 2 fahrenheit sensor topics, got %r" % list(found)
+        for topic, payload in found.items():
+            assert payload["device_class"] == "temperature", topic
+            assert payload["unit_of_measurement"] == "°F", topic
+            assert payload["icon"] == "mdi:thermometer", topic
+
     def test_select_component_detection(
         self, mock_mqtt_client, sample_discovery_config, devices, device_state
     ):

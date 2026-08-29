@@ -259,8 +259,16 @@ def publish_ha_discovery(
             component_type = "sensor"
 
         # Temperature
-        if refCID == "07" and (refDID == "A4" or refDID == "A1"):
+        # 07/A1|A4 = °C setpoints/reads (SetpointTemperature, MeatProbeTemperature,
+        # CurrentMeatprobeTemperature); 07/81 = °C read-only sensor
+        # (CurrentCavityTemperature); 08/A1|81 = °F variants
+        # (SetpointTemperatureFahrenheit, Current*TemperatureFahrenheit).
+        if refCID == "07" and (refDID in ("A1", "A4", "81")):
             discovery_payload["unit_of_measurement"] = "°C"
+            discovery_payload["device_class"] = "temperature"
+            discovery_payload["icon"] = "mdi:thermometer"
+        elif refCID == "08" and (refDID in ("A1", "81")):
+            discovery_payload["unit_of_measurement"] = "°F"
             discovery_payload["device_class"] = "temperature"
             discovery_payload["icon"] = "mdi:thermometer"
         elif refDID == "80" and (refCID in ("02", "03")) and values is not None:
