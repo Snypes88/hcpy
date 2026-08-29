@@ -196,31 +196,39 @@ def publish_ha_discovery(
         # true -- ovens silently ignore {"uid":6,"value":true} (upstream hcpy
         # issue #270). The mature homeconnect_websocket lib acknowledges via
         # Command.execute(self._uid), i.e. {"uid":6,"value":<event_uid>}.
-        # Publish one button per event feature so each carries its event uid.
+        # Publish ONE select per device listing the event features; the command
+        # template extracts the event uid from the chosen option, keeping HA's
+        # UI to a single dropdown instead of one button per event.
         if (
             name == "BSH.Common.Command.AcknowledgeEvent"
             and uid is not None
             and override_component_type is None
         ):
+            event_options = []
             for event_feature in ADDITIONAL_FEATURES + list(device["features"].values()):
                 event_name = event_feature.get("name", "")
                 event_uid = event_feature.get("uid", None)
                 if "Event." not in event_name or event_uid is None:
                     continue
                 event_friendly = event_name.split(".")[-1]
-                event_feature_id = event_name.lower().replace(".", "_")
+                event_options.append(f"{event_friendly} ({event_uid})")
+            if event_options:
                 ack_payload = {
-                    "name": f"{friendly_name} {event_friendly}",
+                    "name": friendly_name,
                     "device": device_info,
                     "availability_mode": "all",
                     "availability": [
                         {"topic": f"{base_topic}/LWT"},
                         {"topic": f"{mqtt_topic}/LWT"},
                     ],
-                    "unique_id": f"{device_ident}_acknowledge_{event_feature_id}",
+                    "unique_id": f"{device_ident}_acknowledgeevent",
                     "enabled_by_default": True,
                     "command_topic": f"{mqtt_topic}/set",
-                    "payload_press": f'[{{"uid":{uid},"value":{event_uid}}}]',
+                    "options": event_options,
+                    # extract the trailing "(<uid>)" from the option label
+                    "command_template": (
+                        '[{"uid":6,"value":{{ value.split(" (")[1] ' '| replace(")", "") }}}]'
+                    ),
                 }
                 if local_control_lockout:
                     ack_payload["availability"] = ack_payload["availability"] + [
@@ -231,8 +239,7 @@ def publish_ha_discovery(
                         }
                     ]
                 ack_topic = clean_international_text(
-                    f"{HA_DISCOVERY_PREFIX}/button/hcpy/"
-                    f"{device_ident}_acknowledge_{event_feature_id}/config"
+                    f"{HA_DISCOVERY_PREFIX}/select/hcpy/" f"{device_ident}_acknowledgeevent/config"
                 )
                 client.publish(ack_topic, json.dumps(ack_payload), retain=True)
             continue

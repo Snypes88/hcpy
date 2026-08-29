@@ -714,11 +714,12 @@ class TestHADiscovery:
 
         assert button_found, "Button component should be detected for writeonly features"
 
-    def test_acknowledge_event_buttons_carry_event_uid(
+    def test_acknowledge_event_select_carries_event_uid(
         self, mock_mqtt_client, sample_discovery_config, device_state
     ):
-        """AcknowledgeEvent must publish one button per event
-        carrying the event uid (issue #270)."""
+        """AcknowledgeEvent must publish ONE select per device whose options
+        carry the event uid, rendered by a command template into the
+        per-event ack payload (issue #270)."""
         device = {
             "name": "test_device",
             "features": {
@@ -760,29 +761,40 @@ class TestHADiscovery:
             )
 
         calls = mock_mqtt_client.publish.call_args_list
-        expected = {
-            "_acknowledge_bsh_common_event_programfinished": '[{"uid":6,"value":540}]',
-            "_acknowledge_cooking_oven_event_watercontainerempty": '[{"uid":6,"value":4611}]',
-        }
-        found = {}
+        ack_select = None
         abort_payloads = []
         for call in calls:
             args = call[0]
             topic = args[0]
-            if "button" not in topic:
-                continue
-            payload_data = json.loads(args[1])
-            if "acknowledge" in topic:
-                for marker, payload in expected.items():
-                    if marker in topic:
-                        found[marker] = payload_data
+            if "select/hcpy/test_device_acknowledgeevent" in topic:
+                ack_select = json.loads(args[1])
             if "abortprogram" in topic:
-                abort_payloads.append(payload_data)
+                abort_payloads.append(json.loads(args[1]))
 
-        for marker, payload in expected.items():
-            assert marker in found, f"Missing per-event ack button for {marker}"
-            assert found[marker]["payload_press"] == payload
-            assert found[marker]["command_topic"] == f"{mqtt_topic}/set"
+        assert ack_select is not None, "Missing single AcknowledgeEvent select"
+        assert ack_select["command_topic"] == f"{mqtt_topic}/set"
+        assert ack_select["options"] == [
+            "ProgramFinished (540)",
+            "WaterContainerEmpty (4611)",
+        ]
+        # command template must render the option label back to the event uid
+        tmpl = ack_select["command_template"]
+        for opt, expected_uid in [
+            ("ProgramFinished (540)", 540),
+            ("WaterContainerEmpty (4611)", 4611),
+        ]:
+            label = opt.split(" (")[1].replace(")", "")
+            rendered = tmpl.replace('{{ value.split(" (")[1] | replace(")", "") }}', label)
+            assert (
+                rendered == f'[{{"uid":6,"value":{expected_uid}}}]'
+            ), f"command template must render {opt} to uid {expected_uid}"
+
+        # No per-event ack buttons should be published anymore
+        for call in calls:
+            args = call[0]
+            topic = args[0]
+            if "button" in topic and "acknowledge" in topic:
+                raise AssertionError(f"Unexpected per-event ack button: {topic}")
 
         # No generic AcknowledgeEvent button with the broken hardcoded true
         for call in calls:
@@ -1006,8 +1018,7 @@ class TestHADiscovery:
         self, mock_mqtt_client, sample_discovery_config, device_state
     ):
         """The four named oven events must surface as event entities with event_types
-        and state topics on the /event/ path, with per-event ack buttons carrying the
-        event uid (per-event ack fix)."""
+        and state topics on the /event/ path (per-event ack fix)."""
         device = {
             "name": "test_soven",
             "features": {
