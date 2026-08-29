@@ -183,6 +183,15 @@ def publish_ha_discovery(
         if overrides:
             override_component_type = overrides.get("component_type", None)
 
+        # Event features can additionally publish a binary_sensor that mirrors the
+        # event state (Present -> ON, Off -> OFF) WITHOUT replacing the event
+        # entity -- automations may depend on the event entity itself.
+        additive_binary = False
+        if overrides and overrides.get("additive_binary_sensor", False):
+            additive_binary = True
+
+        is_event_feature = False
+
         # AcknowledgeEvent (uid 6) must carry the EVENT's uid as its value, not
         # true -- ovens silently ignore {"uid":6,"value":true} (upstream hcpy
         # issue #270). The mature homeconnect_websocket lib acknowledges via
@@ -245,6 +254,7 @@ def publish_ha_discovery(
                 discovery_payload.pop("value_template", None)
                 discovery_payload.pop("options", None)
             discovery_payload["state_topic"] = f"{mqtt_topic}/event/{feature_id}"
+            is_event_feature = True
         else:
             component_type = "sensor"
 
@@ -423,10 +433,54 @@ def publish_ha_discovery(
         )
 
         if overrides:
-            # Overwrite keys with override values
+            # Overwrite keys with override values. The additive_binary_sensor
+            # control key and its binary-sensor-only config belong to the
+            # additive binary sensor, not to the primary entity payload.
             for k, v in overrides.items():
+                if k in ("additive_binary_sensor", "additive_binary_sensor_config"):
+                    continue
                 if isinstance(v, str):
-                    overrides[k] = v.replace("DEVICE_NAME", device_ident)
-            discovery_payload = discovery_payload | overrides
+                    v = v.replace("DEVICE_NAME", device_ident)
+                    overrides[k] = v
+            discovery_payload = discovery_payload | {
+                k: v
+                for k, v in overrides.items()
+                if k not in ("additive_binary_sensor", "additive_binary_sensor_config")
+            }
 
         client.publish(discovery_topic, json.dumps(discovery_payload), retain=True)
+
+        # Additive binary_sensor: mirror an event feature (Present -> ON,
+        # Off -> OFF) as a binary_sensor WITHOUT replacing the event entity.
+        if additive_binary and is_event_feature:
+            binary_payload = {
+                "name": f"{friendly_name} Active",
+                "device": device_info,
+                "state_topic": f"{mqtt_topic}/event/{feature_id}",
+                "value_template": "{{ 'ON' if value_json.event_type == 'Present' else 'OFF' }}",
+                "payload_on": "ON",
+                "payload_off": "OFF",
+                "availability_mode": "all",
+                "availability": [{"topic": f"{base_topic}/LWT"}, {"topic": f"{mqtt_topic}/LWT"}],
+                "unique_id": f"{device_ident}_{feature_id}_active",
+                "enabled_by_default": not disabled,
+                "default_entity_id": f"binary_sensor.{device_ident}_{feature_id}_active",
+            }
+            if overrides:
+                for k, v in overrides.items():
+                    if k in ("component_type", "additive_binary_sensor", "additive_binary_sensor_config"):
+                        continue
+                    if isinstance(v, str):
+                        v = v.replace("DEVICE_NAME", device_ident)
+                    binary_payload[k] = v
+                additive_config = overrides.get("additive_binary_sensor_config", None)
+                if additive_config:
+                    for k, v in additive_config.items():
+                        if isinstance(v, str):
+                            v = v.replace("DEVICE_NAME", device_ident)
+                        binary_payload[k] = v
+            binary_topic = clean_international_text(
+                f"{HA_DISCOVERY_PREFIX}/binary_sensor/hcpy/"
+                f"{device_ident}_{feature_id}_active/config"
+            )
+            client.publish(binary_topic, json.dumps(binary_payload), retain=True)
