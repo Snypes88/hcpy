@@ -844,5 +844,70 @@ class TestHADiscovery:
         assert CONTROL_COMPONENT_TYPES == expected_types
 
 
+
+    def test_soven_steam_program_select_options(
+        self, mock_mqtt_client, sample_discovery_config, device_state
+    ):
+        """ActiveProgram/SelectedProgram select options are built from Cooking.Oven.Program.* names
+        and command topics/templates wire {"program":"<name>","options":[...]} correctly."""
+        device = {
+            "name": "test_soven",
+            "description": {"brand": "GAGGENAU", "model": "BSP250101", "version": "1", "revision": "2"},
+            "features": {
+                "8208": {"name": "Cooking.Oven.Program.HeatingMode.HotAir"},
+                "8212": {"name": "Cooking.Oven.Program.HeatingMode.HotAirGrilling"},
+                "8250": {"name": "Cooking.Oven.Program.HeatingMode.HotAir100Steam"},
+                "8253": {"name": "Cooking.Oven.Program.HeatingMode.HotAir80Steam"},
+                "8254": {"name": "Cooking.Oven.Program.HeatingMode.HotAir60Steam"},
+                "8255": {"name": "Cooking.Oven.Program.HeatingMode.HotAir30Steam"},
+                "8257": {"name": "Cooking.Oven.Program.HeatingMode.FullGrill01Steam"},
+                "8258": {"name": "Cooking.Oven.Program.HeatingMode.FullGrill02Steam"},
+                "5000": {
+                    "name": "BSH.Common.Root.ActiveProgram",
+                    "access": "read",
+                    "available": "true",
+                    "refCID": "03",
+                    "refDID": "80",
+                },
+                "5001": {
+                    "name": "BSH.Common.Root.SelectedProgram",
+                    "access": "read",
+                    "available": "true",
+                    "refCID": "03",
+                    "refDID": "80",
+                },
+            },
+        }
+        mqtt_topic = "test/device/soven"
+
+        with patch("builtins.open", mock_open(read_data=json.dumps(sample_discovery_config))):
+            publish_ha_discovery(
+                "test_config.yaml", device, device_state, mock_mqtt_client, mqtt_topic, False
+            )
+
+        selects = {}
+        for call in mock_mqtt_client.publish.call_args_list:
+            args = call[0]
+            topic = args[0]
+            if "/select/hcpy/" in topic:
+                selects[topic.split("/")[-2]] = json.loads(args[1])
+
+        assert "test_soven_bsh_common_root_activeprogram" in selects
+        assert "test_soven_bsh_common_root_selectedprogram" in selects
+
+        expected_options = [
+            "HotAir", "HotAirGrilling", "HotAir100Steam", "HotAir80Steam",
+            "HotAir60Steam", "HotAir30Steam", "FullGrill01Steam", "FullGrill02Steam",
+        ]
+        for key in ("test_soven_bsh_common_root_activeprogram", "test_soven_bsh_common_root_selectedprogram"):
+            opts = selects[key]["options"]
+            for opt in expected_options:
+                assert opt in opts, f"{key} missing option {opt}"
+            assert selects[key]["command_template"] == '[{"program":"{{value}}","options":[]}]'
+
+        assert selects["test_soven_bsh_common_root_activeprogram"]["command_topic"] == f"{mqtt_topic}/activeProgram"
+        assert selects["test_soven_bsh_common_root_selectedprogram"]["command_topic"] == f"{mqtt_topic}/selectedProgram"
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
