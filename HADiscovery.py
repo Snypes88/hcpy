@@ -183,6 +183,51 @@ def publish_ha_discovery(
         if overrides:
             override_component_type = overrides.get("component_type", None)
 
+        # AcknowledgeEvent (uid 6) must carry the EVENT's uid as its value, not
+        # true -- ovens silently ignore {"uid":6,"value":true} (upstream hcpy
+        # issue #270). The mature homeconnect_websocket lib acknowledges via
+        # Command.execute(self._uid), i.e. {"uid":6,"value":<event_uid>}.
+        # Publish one button per event feature so each carries its event uid.
+        if (
+            name == "BSH.Common.Command.AcknowledgeEvent"
+            and uid is not None
+            and override_component_type is None
+        ):
+            for event_feature in ADDITIONAL_FEATURES + list(device["features"].values()):
+                event_name = event_feature.get("name", "")
+                event_uid = event_feature.get("uid", None)
+                if "Event." not in event_name or event_uid is None:
+                    continue
+                event_friendly = event_name.split(".")[-1]
+                event_feature_id = event_name.lower().replace(".", "_")
+                ack_payload = {
+                    "name": f"{friendly_name} {event_friendly}",
+                    "device": device_info,
+                    "availability_mode": "all",
+                    "availability": [
+                        {"topic": f"{base_topic}/LWT"},
+                        {"topic": f"{mqtt_topic}/LWT"},
+                    ],
+                    "unique_id": f"{device_ident}_acknowledge_{event_feature_id}",
+                    "enabled_by_default": True,
+                    "command_topic": f"{mqtt_topic}/set",
+                    "payload_press": f'[{{"uid":{uid},"value":{event_uid}}}]',
+                }
+                if local_control_lockout:
+                    ack_payload["availability"] = ack_payload["availability"] + [
+                        {
+                            "topic": f"{mqtt_topic}/state/bsh_common_status_localcontrolactive",
+                            "payload_available": "False",
+                            "payload_not_available": "True",
+                        }
+                    ]
+                ack_topic = clean_international_text(
+                    f"{HA_DISCOVERY_PREFIX}/button/hcpy/"
+                    f"{device_ident}_acknowledge_{event_feature_id}/config"
+                )
+                client.publish(ack_topic, json.dumps(ack_payload), retain=True)
+            continue
+
         if (
             refCID == "01" and (refDID == "00" or refDID == "01")
         ) or override_component_type == "binary_sensor":
@@ -239,7 +284,8 @@ def publish_ha_discovery(
         ) or override_component_type in CONTROL_COMPONENT_TYPES:
             # 01/00 is binary true/false
             # 01/01 is binary true/false only seen for Cooking.Common.Setting.ButtonTones
-            # 15/81 is accept/reject event - maybe it needs the event ID rather than true/false?
+            # 15/81 accept/reject commands: AcknowledgeEvent is special-cased above
+            # to publish one button per event carrying the event uid
             if (
                 (refCID == "01" and (refDID == "00" or refDID == "01"))
                 or (refCID == "15" and refDID == "81")

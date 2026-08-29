@@ -611,6 +611,88 @@ class TestHADiscovery:
 
         assert button_found, "Button component should be detected for writeonly features"
 
+    def test_acknowledge_event_buttons_carry_event_uid(
+        self, mock_mqtt_client, sample_discovery_config, device_state
+    ):
+        """AcknowledgeEvent must publish one button per event carrying the event uid (issue #270)."""
+        device = {
+            "name": "test_device",
+            "features": {
+                "6": {
+                    "name": "BSH.Common.Command.AcknowledgeEvent",
+                    "access": "writeOnly",
+                    "available": "true",
+                    "refCID": "15",
+                    "refDID": "81",
+                },
+                "1": {
+                    "name": "BSH.Common.Command.AbortProgram",
+                    "access": "writeOnly",
+                    "available": "true",
+                    "refCID": "01",
+                    "refDID": "00",
+                },
+                "540": {
+                    "name": "BSH.Common.Event.ProgramFinished",
+                    "access": "read",
+                    "available": "true",
+                    "handling": "acknowledge",
+                    "values": {"0": "Off", "1": "Present", "2": "Confirmed"},
+                },
+                "4611": {
+                    "name": "Cooking.Oven.Event.WaterContainerEmpty",
+                    "access": "read",
+                    "available": "true",
+                    "handling": "none",
+                    "values": {"0": "Off", "1": "Present", "2": "Confirmed"},
+                },
+            },
+        }
+        mqtt_topic = "test/device/test"
+
+        with patch("builtins.open", mock_open(read_data=json.dumps(sample_discovery_config))):
+            publish_ha_discovery(
+                "test_config.yaml", device, device_state, mock_mqtt_client, mqtt_topic, False
+            )
+
+        calls = mock_mqtt_client.publish.call_args_list
+        expected = {
+            "_acknowledge_bsh_common_event_programfinished": '[{"uid":6,"value":540}]',
+            "_acknowledge_cooking_oven_event_watercontainerempty": '[{"uid":6,"value":4611}]',
+        }
+        found = {}
+        abort_payloads = []
+        for call in calls:
+            args = call[0]
+            topic = args[0]
+            if "button" not in topic:
+                continue
+            payload_data = json.loads(args[1])
+            if "acknowledge" in topic:
+                for marker, payload in expected.items():
+                    if marker in topic:
+                        found[marker] = payload_data
+            if "abortprogram" in topic:
+                abort_payloads.append(payload_data)
+
+        for marker, payload in expected.items():
+            assert marker in found, f"Missing per-event ack button for {marker}"
+            assert found[marker]["payload_press"] == payload
+            assert found[marker]["command_topic"] == f"{mqtt_topic}/set"
+
+        # No generic AcknowledgeEvent button with the broken hardcoded true
+        for call in calls:
+            args = call[0]
+            payload = json.loads(args[1]) if len(args) > 1 else {}
+            if isinstance(payload, dict) and payload.get("payload_press"):
+                assert payload["payload_press"] != '[{"uid":6,"value":true}]', (
+                    "Broken hardcoded AcknowledgeEvent payload still published"
+                )
+
+        # Other writeonly commands (e.g. AbortProgram) keep boolean buttons
+        assert abort_payloads, "AbortProgram button should still be discovered"
+        assert abort_payloads[0]["payload_press"] == '[{"uid":1,"value":true}]'
+
     def test_light_component_override(
         self, mock_mqtt_client, sample_discovery_config, device_state
     ):
