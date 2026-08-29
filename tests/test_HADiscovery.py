@@ -717,7 +717,8 @@ class TestHADiscovery:
     def test_acknowledge_event_buttons_carry_event_uid(
         self, mock_mqtt_client, sample_discovery_config, device_state
     ):
-        """AcknowledgeEvent must publish one button per event carrying the event uid (issue #270)."""
+        """AcknowledgeEvent must publish one button per event
+        carrying the event uid (issue #270)."""
         device = {
             "name": "test_device",
             "features": {
@@ -1056,8 +1057,12 @@ class TestHADiscovery:
         expected = {
             "test_soven_bsh_common_event_programfinished": "BSH.Common.Event.ProgramFinished",
             "test_soven_bsh_common_event_programaborted": "BSH.Common.Event.ProgramAborted",
-            "test_soven_cooking_common_event_preheatfinished": "Cooking.Common.Event.PreheatFinished",
-            "test_soven_cooking_oven_event_watercontainerempty": "Cooking.Oven.Event.WaterContainerEmpty",
+            "test_soven_cooking_common_event_preheatfinished": (
+                "Cooking.Common.Event.PreheatFinished"
+            ),
+            "test_soven_cooking_oven_event_watercontainerempty": (
+                "Cooking.Oven.Event.WaterContainerEmpty"
+            ),
         }
         for marker, name in expected.items():
             assert marker in events, f"Missing event entity {name}"
@@ -1149,7 +1154,10 @@ class TestHADiscovery:
         event_topic = (
             "homeassistant/event/hcpy/test_soven_cooking_common_event_appliancemoduleerror/config"
         )
-        binary_topic = "homeassistant/binary_sensor/hcpy/test_soven_cooking_common_event_appliancemoduleerror_active/config"
+        binary_topic = (
+            "homeassistant/binary_sensor/hcpy/"
+            "test_soven_cooking_common_event_appliancemoduleerror_active/config"
+        )
 
         # Event entity still published (watchdog automations depend on it)
         assert event_topic in topics
