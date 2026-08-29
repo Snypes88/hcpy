@@ -788,9 +788,9 @@ class TestHADiscovery:
             args = call[0]
             payload = json.loads(args[1]) if len(args) > 1 else {}
             if isinstance(payload, dict) and payload.get("payload_press"):
-                assert payload["payload_press"] != '[{"uid":6,"value":true}]', (
-                    "Broken hardcoded AcknowledgeEvent payload still published"
-                )
+                assert (
+                    payload["payload_press"] != '[{"uid":6,"value":true}]'
+                ), "Broken hardcoded AcknowledgeEvent payload still published"
 
         # Other writeonly commands (e.g. AbortProgram) keep boolean buttons
         assert abort_payloads, "AbortProgram button should still be discovered"
@@ -918,8 +918,6 @@ class TestHADiscovery:
         expected_types = ["switch", "number", "light", "button", "select"]
         assert CONTROL_COMPONENT_TYPES == expected_types
 
-
-
     def test_soven_steam_program_select_options(
         self, mock_mqtt_client, sample_discovery_config, device_state
     ):
@@ -927,7 +925,12 @@ class TestHADiscovery:
         and command topics/templates wire {"program":"<name>","options":[...]} correctly."""
         device = {
             "name": "test_soven",
-            "description": {"brand": "GAGGENAU", "model": "BSP250101", "version": "1", "revision": "2"},
+            "description": {
+                "brand": "GAGGENAU",
+                "model": "BSP250101",
+                "version": "1",
+                "revision": "2",
+            },
             "features": {
                 "8208": {"name": "Cooking.Oven.Program.HeatingMode.HotAir"},
                 "8212": {"name": "Cooking.Oven.Program.HeatingMode.HotAirGrilling"},
@@ -971,17 +974,32 @@ class TestHADiscovery:
         assert "test_soven_bsh_common_root_selectedprogram" in selects
 
         expected_options = [
-            "HotAir", "HotAirGrilling", "HotAir100Steam", "HotAir80Steam",
-            "HotAir60Steam", "HotAir30Steam", "FullGrill01Steam", "FullGrill02Steam",
+            "HotAir",
+            "HotAirGrilling",
+            "HotAir100Steam",
+            "HotAir80Steam",
+            "HotAir60Steam",
+            "HotAir30Steam",
+            "FullGrill01Steam",
+            "FullGrill02Steam",
         ]
-        for key in ("test_soven_bsh_common_root_activeprogram", "test_soven_bsh_common_root_selectedprogram"):
+        for key in (
+            "test_soven_bsh_common_root_activeprogram",
+            "test_soven_bsh_common_root_selectedprogram",
+        ):
             opts = selects[key]["options"]
             for opt in expected_options:
                 assert opt in opts, f"{key} missing option {opt}"
             assert selects[key]["command_template"] == '[{"program":"{{value}}","options":[]}]'
 
-        assert selects["test_soven_bsh_common_root_activeprogram"]["command_topic"] == f"{mqtt_topic}/activeProgram"
-        assert selects["test_soven_bsh_common_root_selectedprogram"]["command_topic"] == f"{mqtt_topic}/selectedProgram"
+        assert (
+            selects["test_soven_bsh_common_root_activeprogram"]["command_topic"]
+            == f"{mqtt_topic}/activeProgram"
+        )
+        assert (
+            selects["test_soven_bsh_common_root_selectedprogram"]["command_topic"]
+            == f"{mqtt_topic}/selectedProgram"
+        )
 
     def test_named_oven_events_publish_as_event_entities(
         self, mock_mqtt_client, sample_discovery_config, device_state
@@ -1128,7 +1146,9 @@ class TestHADiscovery:
         for call in mock_mqtt_client.publish.call_args_list:
             topics[call[0][0]] = json.loads(call[0][1])
 
-        event_topic = "homeassistant/event/hcpy/test_soven_cooking_common_event_appliancemoduleerror/config"
+        event_topic = (
+            "homeassistant/event/hcpy/test_soven_cooking_common_event_appliancemoduleerror/config"
+        )
         binary_topic = "homeassistant/binary_sensor/hcpy/test_soven_cooking_common_event_appliancemoduleerror_active/config"
 
         # Event entity still published (watchdog automations depend on it)
@@ -1143,11 +1163,20 @@ class TestHADiscovery:
         binary_payload = topics[binary_topic]
         assert binary_payload["device_class"] == "problem"
         assert binary_payload["icon"] == "mdi:alert"
-        assert binary_payload["state_topic"] == f"{mqtt_topic}/event/cooking_common_event_appliancemoduleerror"
+        assert (
+            binary_payload["state_topic"]
+            == f"{mqtt_topic}/event/cooking_common_event_appliancemoduleerror"
+        )
         assert binary_payload["payload_on"] == "ON"
         assert binary_payload["payload_off"] == "OFF"
-        assert binary_payload["unique_id"] == "test_soven_cooking_common_event_appliancemoduleerror_active"
-        assert "{{ 'ON' if value_json.event_type == 'Present' else 'OFF' }}" in binary_payload["value_template"]
+        assert (
+            binary_payload["unique_id"]
+            == "test_soven_cooking_common_event_appliancemoduleerror_active"
+        )
+        assert (
+            "{{ 'ON' if value_json.event_type == 'Present' else 'OFF' }}"
+            in binary_payload["value_template"]
+        )
 
     def test_remotecontrolstartallowed_binary_sensor(
         self, mock_mqtt_client, sample_discovery_config, device_state

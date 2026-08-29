@@ -300,8 +300,8 @@ class TestServicesEvent:
             "ci": {"version": 2},
         }
 
-@patch("HCDevice.HCDevice.print")
 
+@patch("HCDevice.HCDevice.print")
 class TestProgramData:
     """test_program_data: named program conversion for oven steam programs (soven BSP250101)."""
 
@@ -338,7 +338,9 @@ class TestProgramData:
         }
         for name, uid in expected.items():
             out = dev.test_program_data([{"program": name, "options": []}])
-            assert out[0]["program"] == uid, f"{name} should resolve to {uid}, got {out[0]['program']}"
+            assert (
+                out[0]["program"] == uid
+            ), f"{name} should resolve to {uid}, got {out[0]['program']}"
 
     def test_named_program_with_options_resolves_program_and_keeps_options(self, _print):
         dev = self.make_soven_device()

@@ -476,7 +476,11 @@ def publish_ha_discovery(
             }
             if overrides:
                 for k, v in overrides.items():
-                    if k in ("component_type", "additive_binary_sensor", "additive_binary_sensor_config"):
+                    if k in (
+                        "component_type",
+                        "additive_binary_sensor",
+                        "additive_binary_sensor_config",
+                    ):
                         continue
                     if isinstance(v, str):
                         v = v.replace("DEVICE_NAME", device_ident)
