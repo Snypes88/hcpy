@@ -347,6 +347,13 @@ def publish_ha_discovery(
                 template = f'[{{"uid":{uid},"value":{{{{value}}}}}}]'
                 discovery_payload["command_template"] = template
 
+                # Temperature numbers (07/A1|A4, e.g. Cooking.Oven.Option.SetpointTemperature)
+                # mirror the sensor branch: carry °C + temperature device class.
+                if refCID == "07" and (refDID == "A1" or refDID == "A4"):
+                    discovery_payload["device_class"] = "temperature"
+                    discovery_payload["unit_of_measurement"] = "°C"
+                    discovery_payload["icon"] = "mdi:thermometer"
+
                 # Min/Max may be already set for durations above
                 minimum = feature.get("min", None)
                 if discovery_payload.get("min") is None and minimum is not None:

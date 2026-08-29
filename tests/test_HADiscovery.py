@@ -182,6 +182,34 @@ class TestHADiscovery:
 
         assert number_found, "Number component should be detected for numeric features"
 
+    def test_setpoint_temperature_number_is_celsius(
+        self, mock_mqtt_client, sample_discovery_config, devices, device_state
+    ):
+        """Setpoint temperature number must carry °C + temperature device class + bounds"""
+        device = devices[0]
+        mqtt_topic = "test/device/oven"
+
+        with patch("builtins.open", mock_open(read_data=json.dumps(sample_discovery_config))):
+            publish_ha_discovery(
+                "test_config.yaml", device, device_state, mock_mqtt_client, mqtt_topic, False
+            )
+
+        calls = mock_mqtt_client.publish.call_args_list
+        setpoint_payload = None
+        for call in calls:
+            args = call[0]
+            topic = args[0]
+            if "number" in topic and "setpointtemperature" in topic:
+                setpoint_payload = json.loads(args[1])
+
+        assert setpoint_payload is not None, "setpoint temperature number topic not published"
+        assert setpoint_payload["device_class"] == "temperature"
+        assert setpoint_payload["unit_of_measurement"] == "°C"
+        assert setpoint_payload["icon"] == "mdi:thermometer"
+        assert setpoint_payload["min"] == 30.0
+        assert setpoint_payload["max"] == 250.0
+        assert setpoint_payload["step"] == 5.0
+
     def test_select_component_detection(
         self, mock_mqtt_client, sample_discovery_config, devices, device_state
     ):
